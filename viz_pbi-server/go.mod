@@ -8,7 +8,8 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/lmittmann/tint v1.0.7
 	github.com/microsoft/go-mssqldb v1.8.0
-	github.com/rs/cors v1.11.1
+        github.com/rs/cors v1.11.1
+        github.com/DATA-DOG/go-sqlmock v1.5.0
 )
 
 require (

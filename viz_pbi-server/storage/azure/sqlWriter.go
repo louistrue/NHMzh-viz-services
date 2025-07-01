@@ -26,6 +26,16 @@ func NewSqlWriter(db *sql.DB) *SqlWriter {
 	}
 }
 
+// truncateRFC3339 parses an RFC3339 timestamp and truncates it to
+// the precision used by DATETIME2(1).
+func truncateRFC3339(ts string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.Truncate(time.Millisecond * 100), nil
+}
+
 // WriteMaterials writes an LCA message to the database
 func (w *SqlWriter) WriteMaterials(dataItems []models.EavMaterialDataItem) error {
 	return w.retryOnDeadlock("write lca message", func() error {
@@ -94,13 +104,11 @@ func (w *SqlWriter) writeElementsWithRetry(items []models.EavElementDataItem) er
 		)
 		for _, item := range batch {
 			params := []string{}
-			// Parse and truncate timestamp to 1 decimal place to match DATETIME2(1)
-			timestamp, err := time.Parse(time.RFC3339, item.Timestamp)
+			truncatedTimestamp, err := truncateRFC3339(item.Timestamp)
 			if err != nil {
 				log.WithFields(logger.Fields{"error": err, "timestamp": item.Timestamp}).Error("Error parsing timestamp")
 				return fmt.Errorf("error parsing timestamp: %v", err)
 			}
-			truncatedTimestamp := timestamp.Truncate(time.Millisecond * 100)
 			for _, val := range []interface{}{
 				item.Project, item.Filename, truncatedTimestamp, item.Id, item.ParamName,
 				item.ParamValueString, item.ParamValueNumber, item.ParamValueBoolean, item.ParamValueDate, item.ParamType,
@@ -191,13 +199,11 @@ func (w *SqlWriter) writeMaterialsWithRetry(items []models.EavMaterialDataItem) 
 		)
 		for _, item := range batch {
 			params := []string{}
-			// Parse and truncate timestamp to 1 decimal place to match DATETIME2(1)
-			timestamp, err := time.Parse(time.RFC3339, item.Timestamp)
+			truncatedTimestamp, err := truncateRFC3339(item.Timestamp)
 			if err != nil {
 				log.WithFields(logger.Fields{"error": err, "timestamp": item.Timestamp}).Error("Error parsing timestamp")
 				return fmt.Errorf("error parsing timestamp: %v", err)
 			}
-			truncatedTimestamp := timestamp.Truncate(time.Millisecond * 100)
 			for _, val := range []interface{}{
 				item.Project, item.Filename, truncatedTimestamp, item.Id, item.Sequence, item.ParamName,
 				item.ParamValueString, item.ParamValueNumber, item.ParamValueBoolean, item.ParamValueDate, item.ParamType,
@@ -283,10 +289,16 @@ func (w *SqlWriter) WriteBlobData(item models.BlobData) error {
 	}
 	defer updateStmt.Close()
 
+	truncatedTimestamp, err := truncateRFC3339(item.Timestamp)
+	if err != nil {
+		log.WithFields(logger.Fields{"error": err, "timestamp": item.Timestamp}).Error("Error parsing timestamp")
+		return fmt.Errorf("error parsing timestamp: %v", err)
+	}
+
 	_, err = updateStmt.ExecContext(ctx,
 		item.Project,           // @p1
 		item.Filename,          // @p2
-		item.Timestamp,         // @p3
+		truncatedTimestamp,     // @p3
 		item.StorageServiceURL, // @p4
 		item.Container,         // @p5
 		item.BlobID,            // @p6
